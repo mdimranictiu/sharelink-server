@@ -121,13 +121,14 @@ async function run() {
     app.post('/generate-link',verifyToken,async(req,res)=>{
       const data= req.body;
       const uniqueId = uuidv4();
-      const uniqueURL = `https://example.com/link/${uniqueId}`;
+      const uniqueURL = `http://localhost:5173/link/${uniqueId}`;
       const newLink = {
         owner: data.owner,
         fileURL: data.fileURL,
         access: data.access,
         expirationDate: data.expirationDate,
         uniqueURL: uniqueURL,
+        views: data.views
       };
       try {
         // Insert the new link into the database collection
@@ -136,12 +137,113 @@ async function run() {
         // Send the result back as the response
         res.status(201).send({ message: 'Link generated successfully', link: newLink.uniqueURL });
       } catch (error) {
-        // If there's an error, send it back in the response
+        // If there's an error
         console.error(error);
         res.status(500).send({ message: 'Error generating link', error: error.message });
       }
       
     })
+
+
+    app.get('/verifylink/:id', async (req, res) => {
+      const { id } = req.params;
+  
+      const linkData = await linksCollection.findOne({ uniqueURL: `http://localhost:5173/link/${id}` });
+  
+      if (!linkData) {
+          return res.status(404).json({ message: "Link not found" });
+      }
+  
+      const now = new Date();
+      const expirationDate = new Date(linkData.expirationDate);
+  
+      if (now > expirationDate) {
+          return res.status(410).json({ message: "Link expired" });
+      }
+  
+      // If the link is public, increment views and allow access
+      if (linkData.access === 'public') {
+          await linksCollection.updateOne(
+              { uniqueURL: `http://localhost:5173/link/${id}` },
+              { $inc: { views: 1 } } // Increment the views field by 1
+          );
+          return res.json({ fileURL: linkData.fileURL });
+      }
+  
+      // If the link is private, check for authentication first
+      const token = req.headers.authorization?.split(' ')[1]; 
+  
+      if (!token) {
+          return res.status(401).json({ message: "Unauthorized. Please log in." });
+      }
+  
+      try {
+          const decoded = jwt.verify(token, process.env.ACCESS_TOKEN_SECRET);
+  
+          // Only update views AFTER successful authentication
+          await linksCollection.updateOne(
+              { uniqueURL: `http://localhost:5173/link/${id}` },
+              { $inc: { views: 1 } } 
+          );
+  
+          return res.json({ fileURL: linkData.fileURL }); 
+      } catch (error) {
+          return res.status(401).json({ message: "Invalid token." });
+      }
+  });
+  
+
+  app.get('/my-links/',verifyToken, async (req, res) => {
+    const email = req.decoded.email;
+    const query= {owner: email}
+    const result= await linksCollection.find(query).toArray()
+    res.send(result)
+  });
+  
+  app.delete('/delete/link/:id',verifyToken,async(req,res)=>{
+    const {id}= req.params;
+    const query = { _id: new ObjectId(id) };
+    const result= await linksCollection.deleteOne(query);
+    res.send(result)
+  })
+
+  app.patch('/update-link', verifyToken, async (req, res) => {
+    const { linkId, access } = req.body; // Destructure linkId and access from req.body
+  
+    // Check if linkId and access are provided
+    if (!linkId || !access) {
+      return res.status(400).json({ message: "linkId and access are required" });
+    }
+  
+    // Ensure linkId is a valid ObjectId before continuing
+    if (!ObjectId.isValid(linkId)) {
+      return res.status(400).json({ message: "Invalid linkId format" });
+    }
+  
+    // Create the update query object
+    const updatedData = { $set: { access: access } };
+  
+    try {
+      // Perform the update operation
+      const result = await linksCollection.updateOne(
+        { _id: new ObjectId(linkId) }, // Ensure _id is ObjectId type
+        updatedData
+      );
+  
+      // Check if the link was found and updated
+      if (result.matchedCount === 0) {
+        return res.status(404).json({ message: "Link not found" });
+      }
+  
+      res.status(200).json({ message: "Link updated successfully", result });
+    } catch (error) {
+      console.error("Error updating link:", error);
+      res.status(500).json({ message: "Error updating link", error: error.message || error });
+    }
+  });
+  
+ 
+  
 
 //     app.get('/user/email', verifyToken, async (req, res) => {
 //       try {

@@ -1,14 +1,25 @@
 const express = require('express');
 require('dotenv').config()
+const cloudinary=require('cloudinary').v2;
 const cors=require('cors')
+const { v4: uuidv4 } = require('uuid');
 const jwt = require("jsonwebtoken");
+const multer = require('multer');
 const app= express();
+cloudinary.config({
+  cloud_name: process.env.CLOUD_NAME, 
+  api_key: process.env.CLOUD_KEY,        
+  api_secret: process.env.CLOUD_SECRET
+});
 const port= process.env.PORT || 3000;
 const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.nu3ic.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0`;
 
-app.use(cors())
+app.use(cors({
+  origin: 'http://localhost:5173',  // Or your frontend's URL
+}));
 app.use(express.json());
+const upload = multer({ storage: multer.memoryStorage() });
 // Create a MongoClient with a MongoClientOptions object to set the Stable API version
 const client = new MongoClient(uri, {
   serverApi: {
@@ -23,6 +34,7 @@ async function run() {
 
     const userCollection = client.db("linkshare").collection("users");
     const contactsCollection = client.db("linkshare").collection("contacts");
+    const linksCollection = client.db("linkshare").collection("links");
  
     app.get('/',(req,res)=>{
         res.send('Server is running')
@@ -66,6 +78,70 @@ async function run() {
       console.log(user);
       res.send(result);
     });
+
+    app.post('/upload', upload.single('file'), async (req, res) => {
+      try {
+        if (!req.file) {
+          return res.status(400).json({ error: 'No file uploaded' });
+        }
+    
+        // Automatically detect file type based on MIME type
+        const resourceType = req.file.mimetype.includes('image')
+          ? 'image'
+          : req.file.mimetype.includes('video')
+          ? 'video'
+          : req.file.mimetype.includes('pdf')
+          ? 'raw'
+          : null;
+    
+        if (!resourceType) {
+          return res.status(400).json({ error: 'Unsupported file type' });
+        }
+    
+        console.log("Uploading file:", req.file); // Log the file details
+    
+        cloudinary.uploader.upload_stream(
+          { resource_type: resourceType },
+          (error, uploadedFile) => {
+            if (error) {
+              console.error("Cloudinary upload error:", error);  // Log Cloudinary error
+              return res.status(500).json({ error: error.message });
+            }
+    
+            console.log("File uploaded successfully:", uploadedFile);  // Log the uploaded file info
+            res.json({ fileUrl: uploadedFile.secure_url });
+          }
+        ).end(req.file.buffer);
+      } catch (error) {
+        console.error("Unexpected error during upload:", error);  // Log unexpected errors
+        res.status(500).json({ error: error.message });
+      }
+    });
+    
+    app.post('/generate-link',verifyToken,async(req,res)=>{
+      const data= req.body;
+      const uniqueId = uuidv4();
+      const uniqueURL = `https://example.com/link/${uniqueId}`;
+      const newLink = {
+        owner: data.owner,
+        fileURL: data.fileURL,
+        access: data.access,
+        expirationDate: data.expirationDate,
+        uniqueURL: uniqueURL,
+      };
+      try {
+        // Insert the new link into the database collection
+        const result = await linksCollection.insertOne(newLink);
+        
+        // Send the result back as the response
+        res.status(201).send({ message: 'Link generated successfully', link: newLink.uniqueURL });
+      } catch (error) {
+        // If there's an error, send it back in the response
+        console.error(error);
+        res.status(500).send({ message: 'Error generating link', error: error.message });
+      }
+      
+    })
 
 //     app.get('/user/email', verifyToken, async (req, res) => {
 //       try {

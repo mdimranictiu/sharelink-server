@@ -7,7 +7,7 @@
 The LinkShare system allows users to generate, manage, and share links for different types of content (text, images, or files). Users can choose to set these links as public or private, with private links offering secure access through authentication or a password. The system ensures that users have full control over their shared links, including deletion, modification, and setting expiration times. The added bonus of link access analytics allows users to track how many times their links have been accessed.
 
  ## 🖼 Screenshot  
-![LinkShare](src/assets/Screenshot_2-3-2025_23523_linkshare-979a6.web.app.jpeg)
+![LinkShare](https://raw.githubusercontent.com/mdimranictiu/sharelink-client-update/main/src/assets/Screenshot_2-3-2025_23523_linkshare-979a6.web.app.jpeg)
 
 ## 📖 Table of Contents
 
